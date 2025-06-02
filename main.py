@@ -49,14 +49,17 @@ def main():
     today = datetime.now().date()
     start_date = None
     if latest_date:
-        print(f"Latest date in the table: {latest_date.date()}")
-        # Update only if the latest date is before today and not Friday
-        if latest_date.date() < today and latest_date.weekday() != 4:
-            # Update from the next day after the latest date
-            start_date = (latest_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        # Update only if the latest date is before today and today is not weekend
+        if latest_date.date() < today and today.weekday() not in [5, 6]:
+            # Update from the business day after the latest date
+            if latest_date.weekday() == 4:
+                days_delta = 3
+            else:
+                days_delta = 1
+            start_date = (latest_date + timedelta(days=days_delta)).strftime('%Y-%m-%d')
             logging.info(f"Latest date in the table: {latest_date.date()}. Starting update from: {start_date}")
         else:
-            # If the latest date is today or a Friday, no need to update
+            # If the latest date is today or today is weekend, no need to update
             existing_tickers = []
             logging.info("Existing tickers are up to date. No need to update.")
     else:
