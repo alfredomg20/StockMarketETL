@@ -1,0 +1,115 @@
+import logging
+from datetime import datetime, timedelta
+from config.assets import TICKERS
+from config.settings import CREDENTIALS_DICT, PROJECT_ID, DATASET_ID, STOCKS_TABLE_ID, SECTORS_TABLE_ID, REQUIRED_ENV_VARS
+from etl.extract import extract_data
+from etl.transform import transform_data
+from etl.load import load_data
+from utils.validations import get_latest_data_date, check_existing_tickers, check_env_variables
+from utils.google_cloud import get_bigquery_client
+
+# Logger configuration
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+def main():
+    logging.info("Starting ETL process...")
+
+    # Check if all required environment variables are set
+    missing_env_vars = check_env_variables(REQUIRED_ENV_VARS)
+    if missing_env_vars:
+        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_env_vars)}")
+
+    # Configure BigQuery client
+    client = get_bigquery_client(CREDENTIALS_DICT, PROJECT_ID)
+
+    # Check if each ticker exists in the sector table
+    logging.info("Checking if each ticker exists in the sector table...")
+    try:
+        existing_tickers = check_existing_tickers(
+            f"{PROJECT_ID}.{DATASET_ID}.{SECTORS_TABLE_ID}",
+            client,
+            TICKERS
+        )
+        missing_tickers = [ticker for ticker in TICKERS if ticker not in existing_tickers]
+    except Exception as e:
+        logging.error(f"Error validating tickers: {e}")
+        missing_tickers = TICKERS  # If fails, assume all tickers are missing
+    if missing_tickers:
+        logging.info(f'Missing tickers to add: {missing_tickers}')
+    else:
+        logging.info("All tickers are included in the dataset.")
+
+    # Determine the date range for incremental update
+    logging.info("Checking latest stock data date...")
+    latest_date = get_latest_data_date(
+        f"{PROJECT_ID}.{DATASET_ID}.{STOCKS_TABLE_ID}",
+        client,
+        date_column="date"
+    )
+    today = datetime.now().date()
+    start_date = None
+    if latest_date:
+        print(f"Latest date in the table: {latest_date.date()}")
+        # Update only if the latest date is before today and not Friday
+        if latest_date.date() < today and latest_date.weekday() != 4:
+            # Update from the next day after the latest date
+            start_date = (latest_date + timedelta(days=1)).strftime('%Y-%m-%d')
+            logging.info(f"Latest date in the table: {latest_date.date()}. Starting update from: {start_date}")
+        else:
+            # If the latest date is today or a Friday, no need to update
+            existing_tickers = []
+            logging.info("Existing tickers are up to date. No need to update.")
+    else:
+        # If no data exists, set start_date to None for full extraction
+        start_date = None
+        logging.info("No existing data found. Full extraction will be performed.")
+    
+    if not existing_tickers and not missing_tickers:
+        return
+
+    # Extract data for required tickers
+    try:
+        period = None if start_date else 'max'
+        raw_stock_df, sector_df = extract_data(
+            existing_tickers=existing_tickers,
+            missing_tickers=missing_tickers,
+            period=period,
+            interval='1d',
+            start_date=start_date
+        )
+        if raw_stock_df.empty and sector_df.empty:
+            logging.warning("No stock or sector data extracted.")
+            return
+        logging.info("Data extracted successfully.")
+    except Exception as e:
+        logging.error(f"Error during data extraction: {e}")
+        return
+
+    # Transform the extracted stock data
+    try:
+        transformed_stock_df = transform_data(raw_stock_df)
+        if transformed_stock_df.empty:
+            logging.warning("No data after transformation.")
+            return
+        logging.info("Data transformed successfully.")
+    except Exception as e:
+        logging.error(f"Error during data transformation: {e}")
+        return
+
+    # Load the transformed data and sector data into BigQuery
+    dataframes = [transformed_stock_df, sector_df]
+    table_ids = [STOCKS_TABLE_ID, SECTORS_TABLE_ID]
+    try:
+        status = load_data(dataframes, CREDENTIALS_DICT, PROJECT_ID, DATASET_ID, table_ids)
+        if status == 'failure':
+            return
+        if status == 'success':
+            logging.info("Data loaded successfully.")
+    except Exception as e:
+        logging.error(f"Error during data loading: {e}")
+        return
+
+    logging.info("ETL process completed successfully.")
+
+if __name__ == "__main__":
+    main()
