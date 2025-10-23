@@ -1,7 +1,11 @@
 import logging
 from datetime import datetime, timedelta
+import pytz  # Add this import
 from config.assets import TICKERS
-from config.settings import CREDENTIALS_DICT, PROJECT_ID, DATASET_ID, STOCKS_TABLE_ID, SECTORS_TABLE_ID, REQUIRED_ENV_VARS
+from config.settings import (
+    CREDENTIALS_DICT, PROJECT_ID, DATASET_ID, STOCKS_TABLE_ID, SECTORS_TABLE_ID,
+    REQUIRED_ENV_VARS, TIMEZONE
+)
 from etl.extract import extract_data
 from etl.transform import transform_data
 from etl.load import load_data
@@ -46,11 +50,29 @@ def main():
         client,
         date_column="date"
     )
-    today = datetime.now().date()
+    
+    # Get current time in New York timezone 
+    tz = pytz.timezone(TIMEZONE)
+    now = datetime.now(tz)
+    today = now.date()
+    
+    # Check if it's before 4 PM New York time (market close)
+    market_close_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    is_before_market_close = now < market_close_time
+
     start_date = None
     if latest_date:
-        # Update only if the latest date is before today and today is not weekend
-        if latest_date.date() < today and today.weekday() not in [5, 6]:
+        # Determine the target date for updates
+        if is_before_market_close:
+            # If before 4 PM NY time, don't try to get today's data
+            target_date = today - timedelta(days=1)
+            logging.info(f"Before market close (4 PM NY time). Target date set to: {target_date}")
+        else:
+            target_date = today
+            logging.info(f"After market close (4 PM NY time). Target date set to: {target_date}")
+
+        # Update only if the latest date is before target date and target date is not weekend
+        if latest_date.date() < target_date and target_date.weekday() not in [5, 6]:
             # Update from the business day after the latest date
             if latest_date.weekday() == 4:
                 days_delta = 3
@@ -59,7 +81,7 @@ def main():
             start_date = (latest_date + timedelta(days=days_delta)).strftime('%Y-%m-%d')
             logging.info(f"Latest date in the table: {latest_date.date()}. Starting update from: {start_date}")
         else:
-            # If the latest date is today or today is weekend, no need to update
+            # If the latest date is up to date or target date is weekend, no need to update
             existing_tickers = []
             logging.info("Existing tickers are up to date. No need to update.")
     else:

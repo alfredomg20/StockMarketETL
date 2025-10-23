@@ -43,3 +43,6 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 DATASET_ID = os.getenv("DATASET_ID")
 STOCKS_TABLE_ID = os.getenv("STOCKS_TABLE_ID")
 SECTORS_TABLE_ID = os.getenv("SECTORS_TABLE_ID")
+
+# Time settings
+TIMEZONE = "America/New_York" # Timezone for stock market operations
