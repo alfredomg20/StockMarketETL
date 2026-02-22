@@ -1,28 +1,6 @@
 import os
 from google.cloud import bigquery
 
-def get_latest_data_date(table_id: str, client: bigquery.Client, date_column: str) -> str:
-    """
-    Retrieves the most recent date from a BigQuery table, optionally filtered by ticker.
-
-    Args:
-        table_id (str): Full table ID in BigQuery (e.g., `project.dataset.table`).
-        client (bigquery.Client): Authenticated BigQuery client.
-        date_column (str): Name of the date column in the table.
-
-    Returns:
-        str: The most recent date in (YYYY-MM-DD format) from the specified column, or None if no data is found.
-    """
-    try:
-        query = f"SELECT MAX({date_column}) AS max_date FROM `{table_id}`"
-        query_job = client.query(query)
-        result = query_job.result()
-        for row in result:
-            return row.max_date
-        return None
-    except Exception:
-        return None
-
 def check_existing_tickers(table_id: str, client: bigquery.Client, tickers: list) -> list:
     """
     Checks wich tickers exist in a BigQuery table.
