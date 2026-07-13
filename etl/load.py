@@ -4,7 +4,7 @@ from google.cloud import bigquery
 from utils.google_cloud import get_bigquery_client
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 def load_data(dataframes: List[pd.DataFrame], credentials_dict: dict, project_id: str, dataset_id: str, table_ids: List[str], write_disposition: str = "WRITE_APPEND") -> str:
     """
@@ -34,9 +34,11 @@ def load_data(dataframes: List[pd.DataFrame], credentials_dict: dict, project_id
             continue
         try:
             table_id_full = f"{project_id}.{dataset_id}.{table_id}"
+            logger.info(f"Loading data into table {table_id_full}...")
             load_df_to_bigquery(df, table_id_full, client, write_disposition=write_disposition)
+            logger.info(f"Data loaded successfully into table {table_id_full}.")
         except Exception as e:
-            logging.error(f"Error loading data into table {table_id}: {e}")
+            logger.error(f"Error loading data into table {table_id}: {e}")
             continue
     return 'success'
 
@@ -78,6 +80,6 @@ def create_dataset(client: bigquery.Client, dataset_id: str) -> None:
     try:
         dataset_ref = client.dataset(dataset_id)
         client.create_dataset(dataset_ref)
-        logging.info(f"Dataset {dataset_id} created.")
+        logger.info(f"Dataset {dataset_id} created.")
     except Exception as e:
-        logging.error(f"Error creating dataset {dataset_id}: {e}")
+        logger.error(f"Error creating dataset {dataset_id}: {e}")

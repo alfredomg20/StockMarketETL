@@ -1,23 +1,37 @@
 import pandas as pd
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 def transform_data(raw_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Transforms the raw stock data by renaming columns to lowercase and converting the 'date' column to datetime.
-
-    Args:
-        raw_df (pd.DataFrame): Raw DataFrame containing stock data with columns to be transformed.
-
-    Returns:
-        pd.DataFrame: Transformed DataFrame with lowercase column names and a datetime 'date' column.
+    Transforms the raw stock data by renaming columns to lowercase, 
+    converting types, and handling potential null values.
     """
     try:
-        rename_dict = {col: col.lower() for col in raw_df.columns}
-        transformed_df = raw_df.rename(columns=rename_dict)
-        transformed_df['date'] = pd.to_datetime(transformed_df['date'])
+        logger.info("Starting data transformation...")
+        if raw_df.empty:
+            logger.warning("Received empty DataFrame for transformation.")
+            return pd.DataFrame()
+
+        # Convert columns to lowercase
+        transformed_df = raw_df.rename(columns=str.lower)
+        
+        # Cast to appropriate types
+        if 'date' in transformed_df.columns:
+            transformed_df['date'] = pd.to_datetime(transformed_df['date'])
+
+        num_cols = ['open', 'high', 'low', 'close', 'volume']
+        existing_num_cols = [col for col in num_cols if col in transformed_df.columns]
+        
+        if existing_num_cols:
+            transformed_df[existing_num_cols] = transformed_df[existing_num_cols].apply(
+                pd.to_numeric, errors='coerce'
+            )
+        
+        logger.info("Data transformation completed successfully.")
         return transformed_df
+
     except Exception as e:
-        logging.error(f"Error during data transformation: {e}")
+        logger.error(f"Error during data transformation: {e}")
         return pd.DataFrame()
